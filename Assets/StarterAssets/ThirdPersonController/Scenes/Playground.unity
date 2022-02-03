@@ -1068,7 +1068,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   values: {fileID: 11400000, guid: cc4bdc91278dc104a899a1bfac3eff85, type: 2}
-  deb: 0
 --- !u!114 &797521463
 MonoBehaviour:
   m_ObjectHideFlags: 0

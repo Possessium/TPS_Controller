@@ -10,6 +10,7 @@ public class CustomCharacterController : MonoBehaviour
     private CharacterInputReceiver input;
     private GameObject mainCamera;
 
+    float animationBlend;
     #region Animation hash
     private int animIDSpeed;
     private int animIDGrounded;
@@ -19,10 +20,14 @@ public class CustomCharacterController : MonoBehaviour
     #endregion
 
     float speed;
+    float targetRotation;
     float rotationVelocity;
     float verticalVelocity;
 
-    [SerializeField] float deb;
+    bool grounded;
+    bool isFalling;
+    bool isJumping;
+    private float terminalVelocity = 53;
 
 
     private void Start()
@@ -38,34 +43,83 @@ public class CustomCharacterController : MonoBehaviour
 
     private void Update()
     {
-        deb = verticalVelocity;
-
+        JumpAndGravity();
+        GroundCheck();
         Move();
-        Jump();
     }
 
     private void Move()
     {
-        controller.Move(new Vector3(0, verticalVelocity, 0) * values.MoveSpeed);
-    }
+        float _targetSpeed = input.Sprint ? values.SprintSpeed : values.MoveSpeed;
 
-    private void Jump()
-    {
-        if(input.Jump && controller.isGrounded)
+        if (input.Move == Vector2.zero)
+            _targetSpeed = 0;
+
+        float _horizontalVelocity = new Vector3(controller.velocity.x, 0, controller.velocity.z).magnitude;
+
+        if (_horizontalVelocity < _targetSpeed - .1f || _horizontalVelocity > _targetSpeed + .1f)
         {
-            verticalVelocity = Mathf.Sqrt(values.JumpHeight * -2 * values.Gravity);
-            animator.SetBool(animIDJump, true);
-            animator.SetBool(animIDFreeFall, false);
+            speed = Mathf.Lerp(_horizontalVelocity, _targetSpeed, Time.deltaTime * values.SpeedChangeRate);
+            speed = Mathf.Round(speed * 1000f) / 1000f;
         }
         else
-            animator.SetBool(animIDJump, false);
+            speed = _targetSpeed;
 
-        if(!controller.isGrounded)
+        animationBlend = Mathf.Lerp(animationBlend, _targetSpeed, Time.deltaTime * values.SpeedChangeRate);
+
+        Vector2 _inputs = input.Move;
+
+        if (_inputs != Vector2.zero)
         {
-            verticalVelocity += values.Gravity * Time.deltaTime;
-            verticalVelocity = Mathf.Clamp(verticalVelocity, -values.TerminalVelocity, 0);
-            animator.SetBool(animIDFreeFall, true);
+            targetRotation = Mathf.Atan2(_inputs.x, _inputs.y) * Mathf.Rad2Deg + mainCamera.transform.eulerAngles.y;
+            float _rotation = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetRotation, ref rotationVelocity, values.RotationSmoothTime);
+            transform.rotation = Quaternion.Euler(new Vector3(0, _rotation, 0));
         }
+
+        Vector3 _direction = Quaternion.Euler(0, targetRotation, 0) * Vector3.forward;
+
+        controller.Move(_direction * (speed * Time.deltaTime) + new Vector3(0, verticalVelocity, 0) * Time.deltaTime);
+
+        animator.SetFloat(animIDSpeed, animationBlend);
+        animator.SetFloat(animIDMotionSpeed, 1);
+    }
+
+    private void JumpAndGravity()
+    {
+        if (grounded)
+        {
+            isFalling = false;
+
+            animator.SetBool(animIDJump, false);
+            animator.SetBool(animIDFreeFall, false);
+
+            if (verticalVelocity < 0)
+                verticalVelocity = -2f;
+
+            if (input.Jump && isJumping)
+            {
+                verticalVelocity = Mathf.Sqrt(values.JumpHeight * -2f * values.Gravity);
+
+                animator.SetBool(animIDJump, true);
+            }
+
+            if (!isJumping)
+                isJumping = true;
+        }
+        else
+        {
+            isJumping = false;
+
+            if (!isFalling)
+                isFalling = true;
+            else
+                animator.SetBool(animIDFreeFall, true);
+
+            input.Jump = false;
+        }
+
+        if (verticalVelocity < terminalVelocity)
+            verticalVelocity += values.Gravity * Time.deltaTime;
     }
 
     private void AssignAnimationIDs()
@@ -77,4 +131,17 @@ public class CustomCharacterController : MonoBehaviour
         animIDMotionSpeed = Animator.StringToHash("MotionSpeed");
     }
 
+    private void GroundCheck()
+    {
+        Vector3 _spherePosition = new Vector3(transform.position.x, transform.position.y - values.GroundedOffset, transform.position.z);
+        grounded = Physics.CheckSphere(_spherePosition, values.GroundedRadius, values.GroundLayers, QueryTriggerInteraction.Ignore);
+
+        animator.SetBool(animIDGrounded, grounded);
+    }
+
+    private void OnDrawGizmos()
+    {
+        Gizmos.color = grounded ? Color.green : Color.red;
+        Gizmos.DrawSphere(new Vector3(transform.position.x, transform.position.y - values.GroundedOffset, transform.position.z), values.GroundedRadius);
+    }
 }
